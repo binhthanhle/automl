@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>✨ AutoML Classifier Tool ✨</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <script src="https://unpkg.com/ml@4.0.0/dist/ml.min.js"></script>
+    <script src='https://cdn.plot.ly/plotly-2.33.0.min.js'></script>
+    <style>
+        /* Custom styles */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .tab-button.active {
+            border-color: #2563eb;
+            color: #2563eb;
+            font-weight: 600;
+            background-color: #eff6ff;
+        }
+        .tab-button {
+            border-bottom-width: 3px;
+            border-color: transparent;
+            transition: all 0.3s ease;
+            padding-top: 0.75rem; padding-bottom: 0.75rem;
+            padding-left: 1.25rem; padding-right: 1.25rem;
+            border-top-left-radius: 0.375rem; border-top-right-radius: 0.375rem;
+        }
+        .tab-button:hover {
+             background-color: #f9fafb;
+             border-color: #d1d5db;
+             color: #374151;
+        }
+        .plotly-graph-div { width: 100%; min-height: 350px; }
+        .loader {
+            border: 4px solid #e5e7eb; border-top: 4px solid #3b82f6;
+            border-radius: 50%; width: 20px; height: 20px;
+            animation: spin 1s linear infinite; display: none; margin-left: 8px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .config-section {
+            border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 1.5rem;
+            background-color: #ffffff;
+            box-shadow: 0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px 0 rgba(0,0,0,0.06);
+        }
+        label.interactive-label:hover { background-color: #f9fafb; cursor: pointer; }
+        .metrics-table th { background-color: #f3f4f6; }
+        .metrics-table tbody tr:hover { background-color: #eff6ff; }
+    </style>
+     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="p-4 md:p-8">
+    <div class="container mx-auto bg-white rounded-xl shadow-2xl p-6 md:p-10">
+        <h1 class="text-3xl md:text-4xl font-bold mb-8 text-gray-800 text-center">
+           ✨ AutoML Classifier Tool ✨
+        </h1>
+
+        <div class="border-b border-gray-300 mb-8">
+            <nav class="-mb-px flex space-x-4 md:space-x-6 justify-center md:justify-start" aria-label="Tabs">
+                <button id="tab1-button" class="tab-button active text-sm font-medium text-center text-gray-600 focus:outline-none" onclick="switchTab('tab1')">
+                    ⚙️ Setup & Train
+                </button>
+                <button id="tab2-button" class="tab-button text-sm font-medium text-center text-gray-600 focus:outline-none" onclick="switchTab('tab2')">
+                    📊 Model Results
+                </button>
+            </nav>
+        </div>
+
+        <div>
+            <div id="tab1" class="space-y-8">
+                <div class="config-section">
+                    <h2 class="text-xl font-semibold mb-4 text-gray-700 flex items-center">
+                       <span class="text-2xl mr-2">📂</span> 1. Upload Dataset (CSV)
+                    </h2>
+                    <input type="file" id="csvFileInput" accept=".csv" class="block w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200 cursor-pointer border border-gray-300 rounded-lg p-1"/>
+                    <p class="text-xs text-gray-500 mt-2">Upload your dataset in CSV format. Ensure it has headers.</p>
+                    <div id="fileInfo" class="mt-3 text-sm text-gray-700 font-medium"></div>
+                </div>
+
+                <div id="targetAndFeatureSelectionOuterSection" class="config-section hidden">
+                    <div id="targetSelectionSection">
+                         <h2 class="text-xl font-semibold mb-4 text-gray-700 flex items-center">
+                            <span class="text-2xl mr-2">🎯</span> 2.A Select Target Variable
+                         </h2>
+                         <select id="targetVariableSelect" class="w-full md:w-2/3 p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-150 ease-in-out">
+                             <option value="">-- Select Target Column --</option>
+                         </select>
+                         <p class="text-xs text-gray-500 mt-2">Choose the column you want the models to predict.</p>
+                    </div>
+
+                    <div id="featureSelectionSection" class="mt-6 border-t border-gray-200 pt-6 hidden">
+                        <h2 class="text-xl font-semibold mb-4 text-gray-700 flex items-center">
+                           <span class="text-2xl mr-2">🧩</span> 2.B Select Features for Training
+                        </h2>
+                        <p class="text-sm text-gray-500 mb-3">Uncheck features you want to exclude from training. All are selected by default.</p>
+                        <div id="featureListCheckboxes" class="space-y-2 max-h-60 overflow-y-auto pr-2">
+                            </div>
+                         <p class="text-xs text-gray-500 mt-2 italic">Note: Preprocessing options below will apply to all listed features, but only selected features will be used for training.</p>
+                    </div>
+                </div>
+
+
+                <div id="preprocessingSection" class="config-section space-y-6 hidden">
+                    <h2 class="text-xl font-semibold mb-4 text-gray-700 flex items-center">
+                       <span class="text-2xl mr-2">🛠️</span> 3. Preprocessing Configuration
+                    </h2>
+                    <div id="nullHandlingSection" class="border-t border-gray-200 pt-4">
+                        <h3 class="font-semibold text-gray-600 mb-3">A. Null Value Handling</h3>
+                        <p class="text-sm text-gray-500 mb-3">Select how to handle missing values:</p>
+                        <div id="nullColumnsList" class="space-y-3 text-sm"></div>
+                    </div>
+                    <div id="categoricalEncodingSection" class="mt-4 border-t border-gray-200 pt-4">
+                        <h3 class="font-semibold text-gray-600 mb-3">B. Categorical Feature Encoding</h3>
+                        <p class="text-sm text-gray-500 mb-3">Select encoding method:</p>
+                        <div id="categoricalColumnsList" class="space-y-3 text-sm"></div>
+                    </div>
+                    <div class="mt-4 border-t border-gray-200 pt-4">
+                        <h3 class="font-semibold text-gray-600 mb-3">C. Train/Test Split</h3>
+                        <label for="testSplitRatio" class="block text-sm text-gray-500 mb-1">Test Set Ratio:</label>
+                        <input type="number" id="testSplitRatio" value="0.2" min="0.1" max="0.9" step="0.05" class="w-full md:w-1/3 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-150 ease-in-out">
+                    </div>
+                </div>
+
+                <div id="modelSelectionSection" class="config-section hidden">
+                    <h2 class="text-xl font-semibold mb-4 text-gray-700 flex items-center">
+                       <span class="text-2xl mr-2">🤖</span> 4. Select Models
+                    </h2>
+                    <div class="space-y-3">
+                        <div class="flex items-center p-2 rounded-md interactive-label">
+                            <input id="modelRF" type="checkbox" value="RandomForest" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer">
+                            <label for="modelRF" class="ml-3 block text-sm font-medium text-gray-800 cursor-pointer">🌳 Random Forest</label>
+                        </div>
+                        <div class="flex items-center p-2 rounded-md interactive-label">
+                            <input id="modelXGB" type="checkbox" value="XGBoost" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer">
+                            <label for="modelXGB" class="ml-3 block text-sm font-medium text-gray-800 cursor-pointer">⚡ XGBoost (Simulated)</label>
+                        </div>
+                        <div class="flex items-center p-2 rounded-md interactive-label">
+                            <input id="modelKNN" type="checkbox" value="KNN" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer">
+                            <label for="modelKNN" class="ml-3 block text-sm font-medium text-gray-800 cursor-pointer">🧍 K-Nearest Neighbors (KNN)</label>
+                        </div>
+                         <div id="knnOptions" class="ml-8 mt-2 hidden space-y-1 border-l-2 border-blue-200 pl-4">
+                             <label for="knnKValue" class="block text-sm text-gray-500">Number of Neighbors (K):</label>
+                             <input type="number" id="knnKValue" value="5" min="1" step="1" class="w-full md:w-1/3 p-1.5 border border-gray-300 rounded-md text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition duration-150 ease-in-out">
+                         </div>
+                    </div>
+                </div>
+
+                <div id="trainButtonSection" class="text-center pt-6 hidden">
+                    <button id="trainButton" class="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold py-3 px-8 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center shadow-md hover:shadow-lg transform hover:-translate-y-0.5">
+                       <span class="text-lg mr-2">🚀</span> Train Models & View Results
+                        <div id="loadingSpinner" class="loader"></div>
+                    </button>
+                    <div id="statusMessageContainer" class="mt-4 text-sm text-center h-6">
+                         <p id="statusMessage" class="font-medium"></p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab2" class="hidden p-6 border border-gray-200 rounded-lg bg-gray-50 min-h-[300px]">
+                <h2 class="text-xl font-semibold mb-4 text-gray-700">Model Performance Results</h2>
+                <div id="tab2ResultsContent" class="space-y-8">
+                     <p id="resultsPlaceholder" class="text-gray-500 italic">Train models using the 'Setup & Train' tab to see results here.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Global Variables ---
+        let rawData = [];
+        let headers = [];
+        let trainFeatures = null;
+        let testFeatures = null;
+        let trainTarget = null;
+        let testTarget = null;
+        let targetVariable = '';
+        let featureDetails = {};
+        let labelEncoders = {};
+        let oneHotEncoders = {};
+
+
+        // --- DOM Elements ---
+        const csvFileInput = document.getElementById('csvFileInput');
+        const fileInfoDiv = document.getElementById('fileInfo');
+        const targetAndFeatureSelectionOuterSection = document.getElementById('targetAndFeatureSelectionOuterSection');
+        const targetSelectionSection = document.getElementById('targetSelectionSection');
+        const targetVariableSelect = document.getElementById('targetVariableSelect');
+        const featureSelectionSection = document.getElementById('featureSelectionSection');
+        const featureListCheckboxes = document.getElementById('featureListCheckboxes');
+        const preprocessingSection = document.getElementById('preprocessingSection');
+        const nullHandlingSection = document.getElementById('nullHandlingSection');
+        const nullColumnsListDiv = document.getElementById('nullColumnsList');
+        const categoricalEncodingSection = document.getElementById('categoricalEncodingSection');
+        const categoricalColumnsListDiv = document.getElementById('categoricalColumnsList');
+        const testSplitRatioInput = document.getElementById('testSplitRatio');
+        const modelSelectionSection = document.getElementById('modelSelectionSection');
+        const knnOptionsDiv = document.getElementById('knnOptions');
+        const modelKNNCheckbox = document.getElementById('modelKNN');
+        const trainButtonSection = document.getElementById('trainButtonSection');
+        const trainButton = document.getElementById('trainButton');
+        const loadingSpinner = document.getElementById('loadingSpinner');
+        const statusMessageContainer = document.getElementById('statusMessageContainer');
+        const statusMessage = document.getElementById('statusMessage');
+        const tab2ResultsContent = document.getElementById('tab2ResultsContent');
+        const resultsPlaceholder = document.getElementById('resultsPlaceholder');
+
+        // --- Tab Switching Logic ---
+        function switchTab(tabId) {
+            document.getElementById('tab1').classList.add('hidden');
+            document.getElementById('tab2').classList.add('hidden');
+            document.getElementById('tab1-button').classList.remove('active');
+            document.getElementById('tab2-button').classList.remove('active');
+            document.getElementById(tabId).classList.remove('hidden');
+            document.getElementById(`${tabId}-button`).classList.add('active');
+        }
+
+        // --- Status Message Update ---
+        function updateStatus(message, type = 'info') {
+             statusMessage.textContent = message;
+             statusMessageContainer.className = 'mt-4 text-sm text-center h-6 font-medium';
+             switch (type) {
+                 case 'error': statusMessage.textContent = `❌ ${message}`; statusMessageContainer.classList.add('text-red-600'); break;
+                 case 'success': statusMessage.textContent = `✅ ${message}`; statusMessageContainer.classList.add('text-green-600'); break;
+                 case 'loading': statusMessage.textContent = `⏳ ${message}`; statusMessageContainer.classList.add('text-blue-600'); break;
+                 default: statusMessageContainer.classList.add('text-gray-600'); break;
+             }
+        }
+
+        // --- Event Listeners ---
+        csvFileInput.addEventListener('change', handleFileUpload);
+        trainButton.addEventListener('click', handleTrainButtonClick);
+        modelKNNCheckbox.addEventListener('change', (event) => {
+             knnOptionsDiv.classList.toggle('hidden', !event.target.checked);
+        });
+        targetVariableSelect.addEventListener('change', (event) => {
+            targetVariable = event.target.value;
+            featureListCheckboxes.innerHTML = ''; // Clear previous feature checkboxes
+            if (targetVariable) {
+                 updateStatus('Analyzing data & populating options...', 'loading');
+                 setTimeout(() => {
+                    analyzeData(rawData, headers); // Analyze all data first
+                    populateFeatureSelector(); // Then populate feature selection
+                    populatePreprocessingOptions(); // Then populate preprocessing based on all potential features
+                    showSectionsAfterTargetAndFeatureSetup(); // Show relevant sections
+                    updateStatus('Select features and configure preprocessing.', 'info');
+                 }, 10);
+            } else {
+                 // Hide all subsequent sections if target is deselected
+                 featureSelectionSection.classList.add('hidden');
+                 preprocessingSection.classList.add('hidden');
+                 modelSelectionSection.classList.add('hidden');
+                 trainButtonSection.classList.add('hidden');
+                 updateStatus('');
+            }
+        });
+
+        // --- File Handling ---
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) { fileInfoDiv.textContent = ''; resetAppState(); updateStatus('No file selected.', 'info'); return; }
+            if (!file.name.endsWith('.csv')) { fileInfoDiv.textContent = ''; resetAppState(); updateStatus('Error: Please upload a CSV file.', 'error'); return; }
+            fileInfoDiv.textContent = `File: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`;
+            updateStatus('Parsing CSV file...', 'loading');
+            resetAppState();
+            Papa.parse(file, {
+                header: true, skipEmptyLines: true, dynamicTyping: true,
+                complete: function(results) {
+                    rawData = results.data; headers = results.meta.fields;
+                    if (!rawData || rawData.length === 0 || !headers || headers.length === 0) { updateStatus('Error: CSV is empty or invalid.', 'error'); resetAppState(); return; }
+                    rawData = rawData.filter(row => row && Object.values(row).some(val => val != null && val !== ''));
+                    if (rawData.length === 0) { updateStatus('Error: No valid data rows found.', 'error'); resetAppState(); return; }
+                    populateTargetVariableSelector();
+                    targetAndFeatureSelectionOuterSection.classList.remove('hidden'); // Show the combined target and feature selection section
+                    updateStatus('CSV parsed. Select target variable.', 'success');
+                },
+                error: function(error) { updateStatus(`Error parsing CSV: ${error.message}`, 'error'); resetAppState(); }
+            });
+        }
+
+        // --- Data Analysis ---
+        function analyzeData(data, dataHeaders) {
+            featureDetails = {}; if (!data || data.length === 0 || !dataHeaders) return;
+            dataHeaders.forEach(header => {
+                if (!header || typeof header !== 'string' || header.trim() === '') { console.warn("Skipping invalid header:", header); return; }
+                const details = { type: 'numeric', hasNulls: false, uniqueValues: new Set() };
+                let nonNumericCount = 0, valueCount = 0;
+                for (const row of data) {
+                    if (typeof row !== 'object' || row === null || !row.hasOwnProperty(header)) continue;
+                    const value = row[header];
+                    if (value == null || value === '') { details.hasNulls = true; }
+                    else { valueCount++; details.uniqueValues.add(value); const valCheck = typeof value === 'string' ? value.trim() : value; if (isNaN(valCheck) || valCheck === '') nonNumericCount++; }
+                }
+                if (valueCount === 0) details.type = 'unknown';
+                else if (nonNumericCount / valueCount > 0.1 || details.uniqueValues.size <= 2 || typeof Array.from(details.uniqueValues)[0] === 'boolean') details.type = 'categorical';
+                else if (nonNumericCount > 0) details.type = 'categorical';
+                if (header === targetVariable) {
+                    if (!featureDetails[header]) featureDetails[header] = { type: 'target', hasNulls: details.hasNulls, uniqueValues: details.uniqueValues };
+                    featureDetails[header].target_type = details.type;
+                } else { featureDetails[header] = details; }
+            });
+            console.log("Feature Analysis Results:", featureDetails);
+        }
+
+        // --- UI Population ---
+        function populateTargetVariableSelector() {
+            targetVariableSelect.innerHTML = '<option value="">-- Select Target Column --</option>';
+            headers.forEach(header => {
+                if (!header || typeof header !== 'string' || header.trim() === '') return;
+                const option = document.createElement('option'); option.value = header; option.textContent = header;
+                targetVariableSelect.appendChild(option);
+            });
+        }
+
+        // New function to populate feature selection checkboxes
+        function populateFeatureSelector() {
+            featureListCheckboxes.innerHTML = ''; // Clear previous
+            headers.forEach(header => {
+                if (header === targetVariable || !featureDetails[header] || featureDetails[header].type === 'target') return; // Skip target variable itself
+
+                const featureDiv = document.createElement('div');
+                featureDiv.className = 'flex items-center p-1.5 rounded-md interactive-label';
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = `feature_${header.replace(/\s+/g, '_')}`; // Create a unique ID
+                checkbox.value = header;
+                checkbox.checked = true; // Select all features by default
+                checkbox.className = 'h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer';
+
+                const label = document.createElement('label');
+                label.htmlFor = checkbox.id;
+                label.textContent = header;
+                label.className = 'ml-2 block text-sm font-medium text-gray-700 cursor-pointer';
+
+                featureDiv.appendChild(checkbox);
+                featureDiv.appendChild(label);
+                featureListCheckboxes.appendChild(featureDiv);
+            });
+            featureSelectionSection.classList.remove('hidden'); // Show the feature selection section
+        }
+
+
+        function populatePreprocessingOptions() {
+            nullColumnsListDiv.innerHTML = ''; categoricalColumnsListDiv.innerHTML = '';
+            let hasNullsOverall = false, hasCategoricalOverall = false;
+            // Iterate over all original headers (excluding target) to show all potential preprocessing options
+            // The actual application of these options in preprocessData will depend on featureSelectionCheckboxes
+            Object.entries(featureDetails).forEach(([header, details]) => {
+                 if (header === targetVariable || details.type === 'target' || details.type === 'unknown') return;
+                // Null Handling Population (remains mostly the same)
+                if (details.hasNulls) {
+                    hasNullsOverall = true; const div = document.createElement('div');
+                    div.className = 'flex flex-col sm:flex-row sm:items-center justify-between p-3 border border-gray-200 rounded-md bg-gray-50';
+                    const placeholderValue = details.type === 'numeric' ? '0 or mean/median' : 'Missing';
+                    div.innerHTML = `<span class="font-medium text-gray-700 mb-2 sm:mb-0">${header}</span><div class="flex items-center space-x-2 sm:space-x-4 mt-1 sm:mt-0 flex-wrap"><label class="flex items-center whitespace-nowrap mr-2 sm:mr-0 p-1 rounded-md interactive-label"><input type="radio" name="null_${header}" value="remove" class="form-radio h-4 w-4 text-blue-600 cursor-pointer" checked><span class="ml-1.5 sm:ml-2 text-gray-600 cursor-pointer">Remove Rows</span></label><label class="flex items-center whitespace-nowrap mr-2 sm:mr-0 p-1 rounded-md interactive-label"><input type="radio" name="null_${header}" value="fill" class="form-radio h-4 w-4 text-blue-600 cursor-pointer"><span class="ml-1.5 sm:ml-2 text-gray-600 cursor-pointer">Fill with:</span></label><input type="text" id="fill_${header}" placeholder="${placeholderValue}" class="p-1.5 border border-gray-300 rounded-md text-xs w-28 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition duration-150 ease-in-out" disabled></div>`;
+                    nullColumnsListDiv.appendChild(div);
+                    const radioButtons = div.querySelectorAll(`input[name='null_${header}']`); const fillInput = div.querySelector(`#fill_${header}`);
+                    radioButtons.forEach(radio => { radio.addEventListener('change', (e) => { fillInput.disabled = (e.target.value !== 'fill'); if(e.target.value === 'fill') fillInput.focus(); }); });
+                }
+                // Categorical Encoding Population (remains mostly the same)
+                if (details.type === 'categorical') {
+                    hasCategoricalOverall = true; const div = document.createElement('div');
+                    div.className = 'flex flex-col sm:flex-row sm:items-center justify-between p-3 border border-gray-200 rounded-md bg-gray-50';
+                     const uniqueCount = details.uniqueValues.size; const defaultEncoding = uniqueCount <= 10 ? 'onehot' : 'label';
+                    div.innerHTML = `<span class="font-medium text-gray-700 mb-2 sm:mb-0">${header} (${uniqueCount} unique)</span><div class="flex items-center space-x-2 sm:space-x-4 mt-1 sm:mt-0 flex-wrap"><label class="flex items-center whitespace-nowrap mr-2 sm:mr-0 p-1 rounded-md interactive-label"><input type="radio" name="cat_${header}" value="onehot" class="form-radio h-4 w-4 text-blue-600 cursor-pointer" ${defaultEncoding === 'onehot' ? 'checked' : ''}><span class="ml-1.5 sm:ml-2 text-gray-600 cursor-pointer">One-Hot</span></label><label class="flex items-center whitespace-nowrap mr-2 sm:mr-0 p-1 rounded-md interactive-label"><input type="radio" name="cat_${header}" value="label" class="form-radio h-4 w-4 text-blue-600 cursor-pointer" ${defaultEncoding === 'label' ? 'checked' : ''}><span class="ml-1.5 sm:ml-2 text-gray-600 cursor-pointer">Label</span></label><label class="flex items-center whitespace-nowrap p-1 rounded-md interactive-label"><input type="radio" name="cat_${header}" value="skip" class="form-radio h-4 w-4 text-blue-600 cursor-pointer" ${defaultEncoding === 'skip' ? 'checked' : ''}><span class="ml-1.5 sm:ml-2 text-gray-600 cursor-pointer">Skip</span></label></div>`;
+                    categoricalColumnsListDiv.appendChild(div);
+                }
+            });
+            nullHandlingSection.classList.toggle('hidden', !hasNullsOverall);
+             if (!hasNullsOverall) nullColumnsListDiv.innerHTML = '<p class="text-sm text-gray-500 italic">No columns with missing values detected.</p>';
+            categoricalEncodingSection.classList.toggle('hidden', !hasCategoricalOverall);
+             if (!hasCategoricalOverall) categoricalColumnsListDiv.innerHTML = '<p class="text-sm text-gray-500 italic">No categorical feature columns detected.</p>';
+        }
+
+        // Updated to show sections after target and feature setup
+        function showSectionsAfterTargetAndFeatureSetup() {
+            featureSelectionSection.classList.remove('hidden'); // Ensure feature selection is visible
+            preprocessingSection.classList.remove('hidden');
+            modelSelectionSection.classList.remove('hidden');
+            trainButtonSection.classList.remove('hidden');
+        }
+
+        function resetAppState() {
+            rawData = []; headers = []; trainFeatures = null; testFeatures = null;
+            trainTarget = null; testTarget = null; targetVariable = ''; featureDetails = {};
+            labelEncoders = {}; oneHotEncoders = {};
+
+            targetVariableSelect.innerHTML = '<option value="">-- Select Target Column --</option>';
+            featureListCheckboxes.innerHTML = ''; // Clear feature checkboxes
+            nullColumnsListDiv.innerHTML = ''; categoricalColumnsListDiv.innerHTML = '';
+            tab2ResultsContent.innerHTML = '';
+            if (resultsPlaceholder) resultsPlaceholder.classList.remove('hidden');
+
+            targetAndFeatureSelectionOuterSection.classList.add('hidden'); // Hide the outer container
+            featureSelectionSection.classList.add('hidden'); // Hide feature selection specifically
+            preprocessingSection.classList.add('hidden');
+            modelSelectionSection.classList.add('hidden');
+            trainButtonSection.classList.add('hidden');
+
+             document.getElementById('modelRF').checked = false;
+             document.getElementById('modelXGB').checked = false;
+             document.getElementById('modelKNN').checked = false;
+             knnOptionsDiv.classList.add('hidden');
+             testSplitRatioInput.value = "0.2";
+             resetTrainButton();
+        }
+
+
+        // --- Preprocessing Logic ---
+        function preprocessData() {
+            updateStatus('Starting preprocessing...', 'loading');
+            if (!rawData || rawData.length === 0) { updateStatus('Error: No data for preprocessing.', 'error'); throw new Error('No data for preprocessing.'); }
+
+            // Get selected features from checkboxes
+            const selectedFeatureNames = [];
+            featureListCheckboxes.querySelectorAll('input[type="checkbox"]:checked').forEach(checkbox => {
+                selectedFeatureNames.push(checkbox.value);
+            });
+
+            if (selectedFeatureNames.length === 0) {
+                updateStatus('Error: Please select at least one feature for training.', 'error');
+                throw new Error('No features selected for training.');
+            }
+            console.log("Selected features for training:", selectedFeatureNames);
+
+            let currentData = JSON.parse(JSON.stringify(rawData));
+            updateStatus('Handling null values for selected features...', 'loading');
+
+            // Null Handling: Only for selected features
+            selectedFeatureNames.forEach(header => {
+                if (featureDetails[header] && featureDetails[header].hasNulls) {
+                    const selectedOption = document.querySelector(`input[name='null_${header}']:checked`);
+                    if (!selectedOption) return;
+                    const strategy = selectedOption.value;
+                    if (strategy === 'remove') {
+                        currentData = currentData.filter(row => row[header] != null && row[header] !== '');
+                    } else if (strategy === 'fill') {
+                        const fillInput = document.getElementById(`fill_${header}`);
+                        let fillValue = fillInput.value.trim();
+                        const isNumeric = featureDetails[header]?.type === 'numeric';
+                        if (fillValue === '') { fillValue = isNumeric ? 0 : 'Missing'; }
+                        else if (isNumeric) { const parsed = parseFloat(fillValue); fillValue = !isNaN(parsed) ? parsed : 0; if(isNaN(parsed)) console.warn(`Non-numeric fill "${fillInput.value}" for numeric "${header}". Using 0.`);}
+                        currentData.forEach(row => { if (row[header] == null || row[header] === '') { row[header] = fillValue; } });
+                    }
+                }
+            });
+
+            if (currentData.length === 0) { updateStatus('Error: All rows removed during null handling.', 'error'); throw new Error('No data after null handling.'); }
+            updateStatus('Encoding selected features...', 'loading');
+            labelEncoders = {}; oneHotEncoders = {}; let finalFeatureHeaders = []; const featureProcessingMap = new Map();
+
+            // Encoding: Iterate over SELECTED FEATURE NAMES
+            selectedFeatureNames.forEach(header => {
+                if (!featureDetails[header] || featureDetails[header].type === 'unknown' || featureDetails[header].type === 'target') return;
+                const details = featureDetails[header];
+                const catOption = document.querySelector(`input[name='cat_${header}']:checked`);
+                const strategy = catOption ? catOption.value : (details.type === 'numeric' ? 'numeric' : 'skip');
+
+                if (strategy === 'skip') { featureProcessingMap.set(header, { strategy: 'skip' }); return; }
+                if (strategy === 'onehot' && details.type === 'categorical') {
+                    const values = Array.from(details.uniqueValues).filter(v => v != null && v !== '').sort();
+                    if (values.length === 0) { console.warn(`Skipping OHE ${header}: No values.`); featureProcessingMap.set(header, { strategy: 'skip' }); return; }
+                    oneHotEncoders[header] = { categories: values };
+                    featureProcessingMap.set(header, { strategy: 'onehot', encoder: oneHotEncoders[header] });
+                    values.forEach(v => finalFeatureHeaders.push(`${header}_${v}`));
+                } else if (strategy === 'label' && details.type === 'categorical') {
+                    const values = Array.from(details.uniqueValues).filter(v => v != null && v !== '').sort();
+                    if (values.length === 0) { console.warn(`Skipping Label ${header}: No values.`); featureProcessingMap.set(header, { strategy: 'skip' }); return; }
+                    const map = {}, invMap = {}; values.forEach((v, i) => { map[v] = i; invMap[i] = v; });
+                    labelEncoders[header] = { mapping: map, inverseMapping: invMap };
+                    featureProcessingMap.set(header, { strategy: 'label', encoder: labelEncoders[header] });
+                    finalFeatureHeaders.push(header);
+                } else if (details.type === 'numeric') {
+                    featureProcessingMap.set(header, { strategy: 'numeric' });
+                    finalFeatureHeaders.push(header);
+                } else {
+                    console.warn(`Unexpected state ${header}, skipping.`); featureProcessingMap.set(header, { strategy: 'skip' });
+                }
+            });
+
+            if (finalFeatureHeaders.length === 0) { updateStatus('Error: No features remaining after encoding.', 'error'); throw new Error('No features remaining after encoding.'); }
+            const processedFeatureMatrix = []; const processedTargetVector = []; const targetDetails = featureDetails[targetVariable]; let targetIsCategorical = false; let targetEncoder = null;
+            if (targetDetails && targetDetails.target_type === 'categorical') {
+                targetIsCategorical = true; const targetHeader = targetVariable;
+                if (!labelEncoders[targetHeader]) { const values = Array.from(targetDetails.uniqueValues).filter(v => v != null && v !== '').sort(); const map = {}, invMap = {}; values.forEach((v, i) => { map[v] = i; invMap[i] = v; }); labelEncoders[targetHeader] = { mapping: map, inverseMapping: invMap }; }
+                targetEncoder = labelEncoders[targetHeader];
+            }
+
+            currentData.forEach(row => {
+                let featureRow = [];
+                // Construct featureRow based on selectedFeatureNames and their processing strategy
+                selectedFeatureNames.forEach(selectedHeader => {
+                    const processingInfo = featureProcessingMap.get(selectedHeader);
+                    if (!processingInfo || processingInfo.strategy === 'skip') return;
+                    let value = row[selectedHeader];
+                    if (value == null || value === '') { value = (featureDetails[selectedHeader]?.type === 'numeric') ? 0 : 'Missing'; }
+                    switch (processingInfo.strategy) {
+                        case 'numeric': featureRow.push(isNaN(parseFloat(value)) ? 0 : parseFloat(value)); break;
+                        case 'label': featureRow.push(processingInfo.encoder.mapping[value] ?? -1); break;
+                        case 'onehot': processingInfo.encoder.categories.forEach(cat => featureRow.push(value === cat ? 1 : 0)); break;
+                    }
+                });
+
+                let targetValue = row[targetVariable];
+                if (targetValue == null || targetValue === '') { console.warn(`Row skipped: missing target`); return; }
+                if (targetIsCategorical && targetEncoder) {
+                    const encoded = targetEncoder.mapping[targetValue];
+                    if (encoded !== undefined) { targetValue = encoded; } else { console.warn(`Row skipped: unseen target "${targetValue}"`); return; }
+                } else {
+                    targetValue = parseFloat(targetValue);
+                    if (isNaN(targetValue)) { console.warn(`Row skipped: non-numeric target "${row[targetVariable]}"`); return; }
+                }
+                // Only add row if featureRow is not empty (i.e., at least one feature was processed for it)
+                if(featureRow.length > 0) {
+                    processedFeatureMatrix.push(featureRow);
+                    processedTargetVector.push(targetValue);
+                } else if (finalFeatureHeaders.length > 0) { // If there should be features, but this row has none (e.g. all were skipped for this row)
+                    console.warn("Row resulted in empty feature vector, skipping:", row);
+                }
+            });
+
+            if (processedFeatureMatrix.length === 0) { updateStatus('Error: No valid rows remaining after processing selected features.', 'error'); throw new Error('No valid data rows remaining.'); }
+            updateStatus('Performing train/test split...', 'loading');
+            const testRatio = parseFloat(testSplitRatioInput.value); if (isNaN(testRatio) || testRatio <= 0 || testRatio >= 1) { updateStatus('Error: Invalid split ratio.', 'error'); throw new Error('Invalid split ratio.'); }
+            const combined = processedFeatureMatrix.map((f, i) => [...f, processedTargetVector[i]]); const shuffled = shuffleArray(combined); const splitIdx = Math.floor(shuffled.length * (1 - testRatio)); if (splitIdx === 0 || splitIdx >= shuffled.length) { updateStatus('Error: Train/test set size 0.', 'error'); throw new Error('Train/test set size 0.'); }
+            const trainData = shuffled.slice(0, splitIdx); const testData = shuffled.slice(splitIdx); trainFeatures = trainData.map(r => r.slice(0, -1)); trainTarget = trainData.map(r => r.slice(-1)[0]); testFeatures = testData.map(r => r.slice(0, -1)); testTarget = testData.map(r => r.slice(-1)[0]);
+            console.log(`Train size: ${trainFeatures.length}, Test size: ${testFeatures.length}`);
+            if(trainFeatures.length > 0) console.log("Number of features in training data:", trainFeatures[0].length);
+            updateStatus('Preprocessing complete.', 'success');
+            return true;
+        }
+
+        function shuffleArray(array) { let currentIndex = array.length, randomIndex; while (currentIndex !== 0) { randomIndex = Math.floor(Math.random() * currentIndex); currentIndex--; [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]]; } return array; }
+
+        // --- Model Training ---
+        async function handleTrainButtonClick() {
+            trainButton.disabled = true; loadingSpinner.style.display = 'inline-block';
+            updateStatus('Starting process...', 'loading');
+            tab2ResultsContent.innerHTML = ''; if (resultsPlaceholder) resultsPlaceholder.classList.remove('hidden');
+
+            const selectedModels = [];
+            if (document.getElementById('modelRF').checked) selectedModels.push('RandomForest');
+            if (document.getElementById('modelXGB').checked) selectedModels.push('XGBoost');
+            if (document.getElementById('modelKNN').checked) selectedModels.push('KNN');
+
+            if (!targetVariable) { updateStatus('Error: Select target variable.', 'error'); resetTrainButton(); return; }
+            if (selectedModels.length === 0) { updateStatus('Error: Select at least one model.', 'error'); resetTrainButton(); return; }
+            if (!rawData || rawData.length === 0) { updateStatus('Error: Upload data first.', 'error'); resetTrainButton(); return; }
+
+            try {
+                await new Promise(resolve => setTimeout(resolve, 10));
+                const preprocessSuccess = preprocessData();
+                if (!preprocessSuccess) { resetTrainButton(); return; }
+
+                updateStatus('Training models...', 'loading'); await new Promise(resolve => setTimeout(resolve, 10));
+                const models = {}; const targetEncoder = labelEncoders[targetVariable];
+                const targetClassesInverseMapping = targetEncoder ? targetEncoder.inverseMapping : null;
+
+                for (const modelName of selectedModels) {
+                    updateStatus(`Training ${modelName}...`, 'loading'); console.log(`Training ${modelName}...`);
+                    let predictions = null; let model = null;
+                    try {
+                        await new Promise(resolve => setTimeout(resolve, 10));
+                        if (modelName === 'RandomForest') { const opts = { seed: 42, maxFeatures: 0.8, replacement: true, nEstimators: 50 }; model = new ML.RandomForestClassifier(opts); model.train(trainFeatures, trainTarget); predictions = model.predict(testFeatures); }
+                        else if (modelName === 'KNN') { const k = parseInt(document.getElementById('knnKValue').value) || 5; model = new ML.KNN(trainFeatures, trainTarget, { k: k }); predictions = model.predict(testFeatures); }
+                        else if (modelName === 'XGBoost') { updateStatus('XGBoost (Simulated)...', 'loading'); console.warn("XGBoost simulated."); const uTargets = [...new Set(testTarget)]; predictions = testTarget.map(() => uTargets[Math.floor(Math.random() * uTargets.length)]); model = "Simulated XGBoost"; }
+                        if (predictions) { let decPreds = predictions; if (targetClassesInverseMapping) { decPreds = predictions.map(idx => targetClassesInverseMapping[idx] ?? `Unknown(${idx})`); } models[modelName] = { model: model, predictions: decPreds }; }
+                    } catch (trainError) { console.error(`Error training ${modelName}:`, trainError); updateStatus(`Error training ${modelName}: ${trainError.message}`, 'error'); models[modelName] = { model: null, predictions: null, error: trainError.message }; }
+                }
+                updateStatus('Evaluating models...', 'loading'); await new Promise(resolve => setTimeout(resolve, 10));
+                let decodedTestTarget = testTarget; if (targetClassesInverseMapping) { decodedTestTarget = testTarget.map(idx => targetClassesInverseMapping[idx] ?? `Unknown(${idx})`); }
+                displayResults(models, decodedTestTarget);
+                updateStatus('Process complete! Results are ready.', 'success');
+                switchTab('tab2');
+            } catch (error) { console.error("Error during training:", error); const msg = error.message || 'An unexpected error occurred.'; updateStatus(`Error: ${msg}`, 'error');
+            } finally { resetTrainButton(); }
+        }
+
+        function resetTrainButton() { trainButton.disabled = false; loadingSpinner.style.display = 'none'; }
+
+        // --- Evaluation and Results Display (Targets Tab 2) ---
+        function displayResults(trainedModels, actualTestTarget) {
+            tab2ResultsContent.innerHTML = ''; if (resultsPlaceholder) resultsPlaceholder.classList.add('hidden');
+            const successfulModels = Object.values(trainedModels).filter(r => !r.error && r.predictions);
+            if (successfulModels.length === 0) { tab2ResultsContent.innerHTML = '<p class="text-orange-600 font-medium">⚠️ No models successfully trained or generated predictions.</p>'; return; }
+
+            Object.entries(trainedModels).forEach(([modelName, result]) => {
+                const modelDiv = document.createElement('div');
+                modelDiv.className = 'border-t border-gray-200 pt-6 first:border-t-0 first:pt-0';
+                let icon = '❓'; if (modelName === 'RandomForest') icon = '🌳'; if (modelName === 'XGBoost') icon = '⚡'; if (modelName === 'KNN') icon = '🧍';
+                modelDiv.innerHTML = `<h3 class="text-xl font-semibold text-indigo-700 mb-4 flex items-center"><span class="text-2xl mr-2">${icon}</span> ${modelName} Results</h3>`;
+                if (result.error) { modelDiv.innerHTML += `<p class="text-red-600 font-medium">❌ Training failed: ${result.error}</p>`; }
+                else if (!result.predictions) { modelDiv.innerHTML += `<p class="text-orange-600 font-medium">⚠️ Model skipped or no predictions.</p>`; }
+                else {
+                    if (!result.predictions || !actualTestTarget || result.predictions.length !== actualTestTarget.length) { modelDiv.innerHTML += `<p class="text-red-600 font-medium">❌ Error: Prediction/Actual mismatch.</p>`; console.error(`Eval error ${modelName}: Pred len(${result.predictions?.length}) !== Actual len(${actualTestTarget?.length})`); }
+                    else {
+                        const confMatrix = calculateConfusionMatrix(actualTestTarget, result.predictions);
+                        const matrixDivId = `confMatrix_${modelName}_${Date.now()}`; const matrixDiv = document.createElement('div'); matrixDiv.id = matrixDivId; matrixDiv.className = "mb-4"; modelDiv.appendChild(matrixDiv);
+                        setTimeout(() => { plotConfusionMatrix(confMatrix, matrixDivId, modelName); }, 0);
+                        const metrics = calculatePrecisionRecall(confMatrix); const metricsDiv = document.createElement('div'); metricsDiv.className = 'mt-4 text-sm overflow-x-auto';
+                        metricsDiv.innerHTML = `<h4 class="font-semibold text-gray-700 mb-2">Performance Metrics:</h4>`;
+                        let metricsTable = `<table class="metrics-table min-w-full divide-y divide-gray-300 border border-gray-300 text-xs rounded-lg overflow-hidden"><thead class="bg-gray-100"><tr><th class="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Class</th><th class="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Precision</th><th class="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Recall</th><th class="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">F1-Score</th></tr></thead><tbody class="bg-white divide-y divide-gray-200">`;
+                        metrics.forEach(m => { metricsTable += `<tr><td class="px-3 py-2 whitespace-nowrap font-medium text-gray-800">${m.class}</td><td class="px-3 py-2 whitespace-nowrap text-gray-700">${m.precision.toFixed(3)}</td><td class="px-3 py-2 whitespace-nowrap text-gray-700">${m.recall.toFixed(3)}</td><td class="px-3 py-2 whitespace-nowrap text-gray-700">${m.f1.toFixed(3)}</td></tr>`; });
+                        metricsTable += `</tbody></table>`; metricsDiv.innerHTML += metricsTable;
+                        const accuracy = calculateAccuracy(confMatrix);
+                        metricsDiv.innerHTML += `<div class="mt-3 bg-blue-50 border border-blue-200 rounded-md p-2 inline-block"><p class="font-semibold text-blue-800">🎯 Overall Accuracy: <span class="text-lg">${(accuracy * 100).toFixed(1)}%</span></p></div>`;
+                        modelDiv.appendChild(metricsDiv);
+                        modelDiv.innerHTML += `<p class="text-xs text-gray-400 mt-3 italic">(PR curve requires probability scores).</p>`;
+                    }
+                }
+                tab2ResultsContent.appendChild(modelDiv);
+            });
+        }
+
+        function calculateConfusionMatrix(yTrue, yPred) { if (!Array.isArray(yTrue) || !Array.isArray(yPred) || yTrue.length !== yPred.length) { console.error("Invalid input CM."); return { matrix: [[]], labels: [] }; } if (yTrue.length === 0) return { matrix: [[]], labels: [] }; const labelsSet = new Set([...yTrue, ...yPred]); const labels = Array.from(labelsSet).sort((a, b) => { if (typeof a === 'number' && typeof b === 'number') return a - b; return String(a).localeCompare(String(b)); }); const labelToIndex = new Map(labels.map((l, i) => [l, i])); const size = labels.length; const matrix = Array(size).fill(0).map(() => Array(size).fill(0)); for (let i = 0; i < yTrue.length; i++) { const trueIdx = labelToIndex.get(yTrue[i]); const predIdx = labelToIndex.get(yPred[i]); if (trueIdx !== undefined && predIdx !== undefined) { matrix[trueIdx][predIdx]++; } else { console.warn(`Undefined index CM: T='${yTrue[i]}', P='${yPred[i]}'`); } } return { matrix, labels }; }
+        function plotConfusionMatrix(confMatrixData, elementId, modelName) { const { matrix, labels } = confMatrixData; const plotElement = document.getElementById(elementId); if (!plotElement) { console.error(`Plotly target ${elementId} not found.`); return; } if (!matrix || !Array.isArray(matrix) || matrix.length === 0 || !Array.isArray(matrix[0]) || !labels || !Array.isArray(labels) || labels.length !== matrix.length) { plotElement.innerHTML = `<p class="text-red-500">Invalid CM data.</p>`; console.error(`Invalid matrix/label for ${modelName}:`, { matrix, labels }); return; } const stringLabels = labels.map(String); const totalSamplesPerClass = matrix.map(row => row.reduce((s, v) => s + v, 0)); const annotationFontColors = matrix.map(row => row.map(val => { let maxVal = 0; matrix.forEach(r => r.forEach(cell => { if (cell > maxVal) maxVal = cell; })); const normVal = maxVal > 0 ? val / maxVal : 0; return normVal > 0.5 ? 'black' : 'white'; })); const trace = { z: matrix, x: stringLabels, y: stringLabels, type: 'heatmap', colorscale: 'Viridis', reversescale: false, showscale: true, hoverinfo: 'skip', hovertemplate: '<b>True</b>: %{y}<br><b>Predicted</b>: %{x}<br><b>Count</b>: %{z}<extra></extra>', xgap: 2, ygap: 2, colorbar: { title: 'Count', titleside: 'right', tickfont: { size: 10, color: 'grey' } } }; const layout = { title: { text: `<b>Confusion Matrix: ${modelName}</b>`, font: { size: 16, family: 'Inter, sans-serif', color: '#333' }, x: 0.5, xanchor: 'center' }, xaxis: { title: 'Predicted Label', side: 'bottom', tickangle: labels.length > 5 ? -30 : 0, tickfont: { size: 11 } }, yaxis: { title: 'True Label', autorange: 'reversed', tickfont: { size: 11 } }, margin: { t: 50, b: 100, l: 100, r: 50 }, autosize: true, annotations: [] }; for (let i = 0; i < stringLabels.length; i++) { for (let j = 0; j < stringLabels.length; j++) { const textColor = annotationFontColors[i][j]; const count = matrix[i][j]; const percent = totalSamplesPerClass[i] > 0 ? (count / totalSamplesPerClass[i] * 100).toFixed(1) : "0.0"; const ann = { xref: 'x1', yref: 'y1', x: stringLabels[j], y: stringLabels[i], text: `${count}<br>(${percent}%)`, font: { family: 'Inter, sans-serif', size: 10, color: textColor }, showarrow: false }; layout.annotations.push(ann); } } Plotly.newPlot(elementId, [trace], layout, { responsive: true }).catch(err => { console.error(`Plotly error ${elementId}:`, err); if (plotElement) { plotElement.innerHTML = `<p class="text-red-500">Plot error.</p>`; } }); }
+        function calculatePrecisionRecall(confMatrixData) { const { matrix, labels } = confMatrixData; if (!matrix || !Array.isArray(matrix) || matrix.length === 0 || !labels || labels.length !== matrix.length) { console.error("Invalid input PR."); return []; } const numClasses = labels.length; const metrics = []; for (let i = 0; i < numClasses; i++) { let tp = matrix[i][i], fp = 0, fn = 0; for (let j = 0; j < numClasses; j++) { if (i !== j) { fp += matrix[j][i]; fn += matrix[i][j]; } } const precision = (tp + fp === 0) ? 0 : tp / (tp + fp); const recall = (tp + fn === 0) ? 0 : tp / (tp + fn); const f1 = (precision + recall === 0) ? 0 : 2 * (precision * recall) / (precision + recall); metrics.push({ class: labels[i], precision, recall, f1, tp, fp, fn }); } return metrics; }
+        function calculateAccuracy(confMatrixData) { const { matrix } = confMatrixData; if (!matrix || !Array.isArray(matrix) || matrix.length === 0) return 0; let totalCorrect = 0, totalSamples = 0; for (let i = 0; i < matrix.length; i++) { if (!Array.isArray(matrix[i]) || matrix[i].length !== matrix.length) { console.error("Invalid matrix structure Acc."); return 0; } for (let j = 0; j < matrix[i].length; j++) { if (i === j) totalCorrect += matrix[i][j]; totalSamples += matrix[i][j]; } } return totalSamples === 0 ? 0 : totalCorrect / totalSamples; }
+
+        // --- Initial Setup ---
+        switchTab('tab1');
+    </script>
+</body>
+</html>
