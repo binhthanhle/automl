@@ -75,7 +75,11 @@
                        <span class="text-2xl mr-2">📂</span> 1. Upload Dataset (CSV)
                     </h2>
                     <input type="file" id="csvFileInput" accept=".csv" class="block w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200 cursor-pointer border border-gray-300 rounded-lg p-1"/>
-                    <p class="text-xs text-gray-500 mt-2">Upload your dataset in CSV format. Ensure it has headers.</p>
+                    <div class="my-3 text-center text-sm text-gray-500">OR</div>
+                    <button id="loadDemoDataButton" class="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-lg transition duration-150 ease-in-out flex items-center justify-center">
+                        <span class="text-lg mr-2">🌸</span> Load Demo Iris Data
+                    </button>
+                    <p class="text-xs text-gray-500 mt-3">Upload your dataset in CSV format or load the demo data. Ensure it has headers.</p>
                     <div id="fileInfo" class="mt-3 text-sm text-gray-700 font-medium"></div>
                 </div>
 
@@ -183,6 +187,7 @@
 
         // --- DOM Elements ---
         const csvFileInput = document.getElementById('csvFileInput');
+        const loadDemoDataButton = document.getElementById('loadDemoDataButton'); // New button
         const fileInfoDiv = document.getElementById('fileInfo');
         const targetAndFeatureSelectionOuterSection = document.getElementById('targetAndFeatureSelectionOuterSection');
         const targetSelectionSection = document.getElementById('targetSelectionSection');
@@ -230,6 +235,7 @@
 
         // --- Event Listeners ---
         csvFileInput.addEventListener('change', handleFileUpload);
+        loadDemoDataButton.addEventListener('click', handleLoadDemoData); // Listener for demo data button
         trainButton.addEventListener('click', handleTrainButtonClick);
         modelKNNCheckbox.addEventListener('change', (event) => {
              knnOptionsDiv.classList.toggle('hidden', !event.target.checked);
@@ -240,14 +246,13 @@
             if (targetVariable) {
                  updateStatus('Analyzing data & populating options...', 'loading');
                  setTimeout(() => {
-                    analyzeData(rawData, headers); // Analyze all data first
-                    populateFeatureSelector(); // Then populate feature selection
-                    populatePreprocessingOptions(); // Then populate preprocessing based on all potential features
-                    showSectionsAfterTargetAndFeatureSetup(); // Show relevant sections
+                    analyzeData(rawData, headers);
+                    populateFeatureSelector();
+                    populatePreprocessingOptions();
+                    showSectionsAfterTargetAndFeatureSetup();
                     updateStatus('Select features and configure preprocessing.', 'info');
                  }, 10);
             } else {
-                 // Hide all subsequent sections if target is deselected
                  featureSelectionSection.classList.add('hidden');
                  preprocessingSection.classList.add('hidden');
                  modelSelectionSection.classList.add('hidden');
@@ -256,28 +261,68 @@
             }
         });
 
-        // --- File Handling ---
+        // --- File Handling & Demo Data ---
         function handleFileUpload(event) {
             const file = event.target.files[0];
             if (!file) { fileInfoDiv.textContent = ''; resetAppState(); updateStatus('No file selected.', 'info'); return; }
             if (!file.name.endsWith('.csv')) { fileInfoDiv.textContent = ''; resetAppState(); updateStatus('Error: Please upload a CSV file.', 'error'); return; }
             fileInfoDiv.textContent = `File: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`;
             updateStatus('Parsing CSV file...', 'loading');
-            resetAppState();
-            Papa.parse(file, {
+            resetAppState(); // Reset state before parsing
+            parseCsvData(file);
+        }
+
+        async function handleLoadDemoData() {
+            const demoDataUrl = 'https://raw.githubusercontent.com/binhthanhle/automl/refs/heads/main/Iris.csv';
+            fileInfoDiv.textContent = `Loading: Iris.csv (Demo)`;
+            updateStatus('Loading demo Iris dataset...', 'loading');
+            resetAppState(); // Reset state before loading
+
+            try {
+                const response = await fetch(demoDataUrl);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const csvText = await response.text();
+                // PapaParse expects a File object or a string. We pass the fetched text.
+                parseCsvData(csvText, "Iris_Demo.csv"); // Pass a dummy filename for consistency if needed
+            } catch (error) {
+                console.error('Error fetching demo data:', error);
+                updateStatus(`Error loading demo data: ${error.message}`, 'error');
+                fileInfoDiv.textContent = ''; // Clear file info on error
+            }
+        }
+
+        function parseCsvData(csvInput, fileName = "Uploaded File") { // fileName for context if input is string
+             Papa.parse(csvInput, {
                 header: true, skipEmptyLines: true, dynamicTyping: true,
                 complete: function(results) {
                     rawData = results.data; headers = results.meta.fields;
-                    if (!rawData || rawData.length === 0 || !headers || headers.length === 0) { updateStatus('Error: CSV is empty or invalid.', 'error'); resetAppState(); return; }
+                    if (!rawData || rawData.length === 0 || !headers || headers.length === 0) {
+                        updateStatus('Error: CSV data is empty or invalid.', 'error');
+                        resetAppState(); return;
+                    }
                     rawData = rawData.filter(row => row && Object.values(row).some(val => val != null && val !== ''));
-                    if (rawData.length === 0) { updateStatus('Error: No valid data rows found.', 'error'); resetAppState(); return; }
+                    if (rawData.length === 0) {
+                        updateStatus('Error: No valid data rows found in CSV.', 'error');
+                        resetAppState(); return;
+                    }
+                    // Update fileInfoDiv only if it wasn't set by demo loader
+                    if (!fileInfoDiv.textContent.includes("Demo")) {
+                         fileInfoDiv.textContent = `File: ${fileName}`;
+                    }
                     populateTargetVariableSelector();
-                    targetAndFeatureSelectionOuterSection.classList.remove('hidden'); // Show the combined target and feature selection section
-                    updateStatus('CSV parsed. Select target variable.', 'success');
+                    targetAndFeatureSelectionOuterSection.classList.remove('hidden');
+                    updateStatus('Data loaded. Select target variable.', 'success');
                 },
-                error: function(error) { updateStatus(`Error parsing CSV: ${error.message}`, 'error'); resetAppState(); }
+                error: function(error) {
+                    updateStatus(`Error parsing CSV data: ${error.message}`, 'error');
+                    resetAppState();
+                    fileInfoDiv.textContent = ''; // Clear file info on error
+                }
             });
         }
+
 
         // --- Data Analysis ---
         function analyzeData(data, dataHeaders) {
@@ -313,42 +358,34 @@
             });
         }
 
-        // New function to populate feature selection checkboxes
         function populateFeatureSelector() {
-            featureListCheckboxes.innerHTML = ''; // Clear previous
+            featureListCheckboxes.innerHTML = '';
             headers.forEach(header => {
-                if (header === targetVariable || !featureDetails[header] || featureDetails[header].type === 'target') return; // Skip target variable itself
-
+                if (header === targetVariable || !featureDetails[header] || featureDetails[header].type === 'target') return;
                 const featureDiv = document.createElement('div');
                 featureDiv.className = 'flex items-center p-1.5 rounded-md interactive-label';
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
-                checkbox.id = `feature_${header.replace(/\s+/g, '_')}`; // Create a unique ID
+                checkbox.id = `feature_${header.replace(/\s+/g, '_')}`;
                 checkbox.value = header;
-                checkbox.checked = true; // Select all features by default
+                checkbox.checked = true;
                 checkbox.className = 'h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer';
-
                 const label = document.createElement('label');
                 label.htmlFor = checkbox.id;
                 label.textContent = header;
                 label.className = 'ml-2 block text-sm font-medium text-gray-700 cursor-pointer';
-
                 featureDiv.appendChild(checkbox);
                 featureDiv.appendChild(label);
                 featureListCheckboxes.appendChild(featureDiv);
             });
-            featureSelectionSection.classList.remove('hidden'); // Show the feature selection section
+            featureSelectionSection.classList.remove('hidden');
         }
-
 
         function populatePreprocessingOptions() {
             nullColumnsListDiv.innerHTML = ''; categoricalColumnsListDiv.innerHTML = '';
             let hasNullsOverall = false, hasCategoricalOverall = false;
-            // Iterate over all original headers (excluding target) to show all potential preprocessing options
-            // The actual application of these options in preprocessData will depend on featureSelectionCheckboxes
             Object.entries(featureDetails).forEach(([header, details]) => {
                  if (header === targetVariable || details.type === 'target' || details.type === 'unknown') return;
-                // Null Handling Population (remains mostly the same)
                 if (details.hasNulls) {
                     hasNullsOverall = true; const div = document.createElement('div');
                     div.className = 'flex flex-col sm:flex-row sm:items-center justify-between p-3 border border-gray-200 rounded-md bg-gray-50';
@@ -358,7 +395,6 @@
                     const radioButtons = div.querySelectorAll(`input[name='null_${header}']`); const fillInput = div.querySelector(`#fill_${header}`);
                     radioButtons.forEach(radio => { radio.addEventListener('change', (e) => { fillInput.disabled = (e.target.value !== 'fill'); if(e.target.value === 'fill') fillInput.focus(); }); });
                 }
-                // Categorical Encoding Population (remains mostly the same)
                 if (details.type === 'categorical') {
                     hasCategoricalOverall = true; const div = document.createElement('div');
                     div.className = 'flex flex-col sm:flex-row sm:items-center justify-between p-3 border border-gray-200 rounded-md bg-gray-50';
@@ -373,9 +409,8 @@
              if (!hasCategoricalOverall) categoricalColumnsListDiv.innerHTML = '<p class="text-sm text-gray-500 italic">No categorical feature columns detected.</p>';
         }
 
-        // Updated to show sections after target and feature setup
         function showSectionsAfterTargetAndFeatureSetup() {
-            featureSelectionSection.classList.remove('hidden'); // Ensure feature selection is visible
+            featureSelectionSection.classList.remove('hidden');
             preprocessingSection.classList.remove('hidden');
             modelSelectionSection.classList.remove('hidden');
             trainButtonSection.classList.remove('hidden');
@@ -385,15 +420,16 @@
             rawData = []; headers = []; trainFeatures = null; testFeatures = null;
             trainTarget = null; testTarget = null; targetVariable = ''; featureDetails = {};
             labelEncoders = {}; oneHotEncoders = {};
+            csvFileInput.value = ''; // Clear the file input
 
             targetVariableSelect.innerHTML = '<option value="">-- Select Target Column --</option>';
-            featureListCheckboxes.innerHTML = ''; // Clear feature checkboxes
+            featureListCheckboxes.innerHTML = '';
             nullColumnsListDiv.innerHTML = ''; categoricalColumnsListDiv.innerHTML = '';
             tab2ResultsContent.innerHTML = '';
             if (resultsPlaceholder) resultsPlaceholder.classList.remove('hidden');
 
-            targetAndFeatureSelectionOuterSection.classList.add('hidden'); // Hide the outer container
-            featureSelectionSection.classList.add('hidden'); // Hide feature selection specifically
+            targetAndFeatureSelectionOuterSection.classList.add('hidden');
+            featureSelectionSection.classList.add('hidden');
             preprocessingSection.classList.add('hidden');
             modelSelectionSection.classList.add('hidden');
             trainButtonSection.classList.add('hidden');
@@ -406,219 +442,134 @@
              resetTrainButton();
         }
 
-
         // --- Preprocessing Logic ---
         function preprocessData() {
             updateStatus('Starting preprocessing...', 'loading');
             if (!rawData || rawData.length === 0) { updateStatus('Error: No data for preprocessing.', 'error'); throw new Error('No data for preprocessing.'); }
-
-            // Get selected features from checkboxes
             const selectedFeatureNames = [];
-            featureListCheckboxes.querySelectorAll('input[type="checkbox"]:checked').forEach(checkbox => {
-                selectedFeatureNames.push(checkbox.value);
-            });
-
-            if (selectedFeatureNames.length === 0) {
-                updateStatus('Error: Please select at least one feature for training.', 'error');
-                throw new Error('No features selected for training.');
-            }
+            featureListCheckboxes.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => selectedFeatureNames.push(cb.value));
+            if (selectedFeatureNames.length === 0) { updateStatus('Error: Select at least one feature.', 'error'); throw new Error('No features selected.'); }
             console.log("Selected features for training:", selectedFeatureNames);
-
             let currentData = JSON.parse(JSON.stringify(rawData));
             updateStatus('Handling null values for selected features...', 'loading');
-
-            // Null Handling: Only for selected features
             selectedFeatureNames.forEach(header => {
                 if (featureDetails[header] && featureDetails[header].hasNulls) {
-                    const selectedOption = document.querySelector(`input[name='null_${header}']:checked`);
-                    if (!selectedOption) return;
-                    const strategy = selectedOption.value;
-                    if (strategy === 'remove') {
-                        currentData = currentData.filter(row => row[header] != null && row[header] !== '');
-                    } else if (strategy === 'fill') {
-                        const fillInput = document.getElementById(`fill_${header}`);
-                        let fillValue = fillInput.value.trim();
-                        const isNumeric = featureDetails[header]?.type === 'numeric';
-                        if (fillValue === '') { fillValue = isNumeric ? 0 : 'Missing'; }
-                        else if (isNumeric) { const parsed = parseFloat(fillValue); fillValue = !isNaN(parsed) ? parsed : 0; if(isNaN(parsed)) console.warn(`Non-numeric fill "${fillInput.value}" for numeric "${header}". Using 0.`);}
-                        currentData.forEach(row => { if (row[header] == null || row[header] === '') { row[header] = fillValue; } });
-                    }
+                    const opt = document.querySelector(`input[name='null_${header}']:checked`); if (!opt) return; const strat = opt.value;
+                    if (strat === 'remove') { currentData = currentData.filter(row => row[header] != null && row[header] !== ''); }
+                    else if (strat === 'fill') { const input = document.getElementById(`fill_${header}`); let val = input.value.trim(); const isNum = featureDetails[header]?.type === 'numeric'; if (val === '') val = isNum ? 0 : 'Missing'; else if (isNum) { const p = parseFloat(val); val = !isNaN(p) ? p : 0; if(isNaN(p)) console.warn(`Non-num fill "${input.value}" for num "${header}". Using 0.`);} currentData.forEach(row => { if (row[header] == null || row[header] === '') row[header] = val; }); }
                 }
             });
-
-            if (currentData.length === 0) { updateStatus('Error: All rows removed during null handling.', 'error'); throw new Error('No data after null handling.'); }
+            if (currentData.length === 0) { updateStatus('Error: All rows removed by null handling.', 'error'); throw new Error('No data after nulls.'); }
             updateStatus('Encoding selected features...', 'loading');
             labelEncoders = {}; oneHotEncoders = {}; let finalFeatureHeaders = []; const featureProcessingMap = new Map();
-
-            // Encoding: Iterate over SELECTED FEATURE NAMES
             selectedFeatureNames.forEach(header => {
                 if (!featureDetails[header] || featureDetails[header].type === 'unknown' || featureDetails[header].type === 'target') return;
-                const details = featureDetails[header];
-                const catOption = document.querySelector(`input[name='cat_${header}']:checked`);
-                const strategy = catOption ? catOption.value : (details.type === 'numeric' ? 'numeric' : 'skip');
-
-                if (strategy === 'skip') { featureProcessingMap.set(header, { strategy: 'skip' }); return; }
-                if (strategy === 'onehot' && details.type === 'categorical') {
-                    const values = Array.from(details.uniqueValues).filter(v => v != null && v !== '').sort();
-                    if (values.length === 0) { console.warn(`Skipping OHE ${header}: No values.`); featureProcessingMap.set(header, { strategy: 'skip' }); return; }
-                    oneHotEncoders[header] = { categories: values };
-                    featureProcessingMap.set(header, { strategy: 'onehot', encoder: oneHotEncoders[header] });
-                    values.forEach(v => finalFeatureHeaders.push(`${header}_${v}`));
-                } else if (strategy === 'label' && details.type === 'categorical') {
-                    const values = Array.from(details.uniqueValues).filter(v => v != null && v !== '').sort();
-                    if (values.length === 0) { console.warn(`Skipping Label ${header}: No values.`); featureProcessingMap.set(header, { strategy: 'skip' }); return; }
-                    const map = {}, invMap = {}; values.forEach((v, i) => { map[v] = i; invMap[i] = v; });
-                    labelEncoders[header] = { mapping: map, inverseMapping: invMap };
-                    featureProcessingMap.set(header, { strategy: 'label', encoder: labelEncoders[header] });
-                    finalFeatureHeaders.push(header);
-                } else if (details.type === 'numeric') {
-                    featureProcessingMap.set(header, { strategy: 'numeric' });
-                    finalFeatureHeaders.push(header);
-                } else {
-                    console.warn(`Unexpected state ${header}, skipping.`); featureProcessingMap.set(header, { strategy: 'skip' });
-                }
+                const details = featureDetails[header]; const catOpt = document.querySelector(`input[name='cat_${header}']:checked`); const strat = catOpt ? catOpt.value : (details.type === 'numeric' ? 'numeric' : 'skip');
+                if (strat === 'skip') { featureProcessingMap.set(header, { strategy: 'skip' }); return; }
+                if (strat === 'onehot' && details.type === 'categorical') { const vals = Array.from(details.uniqueValues).filter(v => v != null && v !== '').sort(); if (vals.length === 0) { console.warn(`Skip OHE ${header}: No values.`); featureProcessingMap.set(header, { strategy: 'skip' }); return; } oneHotEncoders[header] = { categories: vals }; featureProcessingMap.set(header, { strategy: 'onehot', encoder: oneHotEncoders[header] }); vals.forEach(v => finalFeatureHeaders.push(`${header}_${v}`)); }
+                else if (strat === 'label' && details.type === 'categorical') { const vals = Array.from(details.uniqueValues).filter(v => v != null && v !== '').sort(); if (vals.length === 0) { console.warn(`Skip Label ${header}: No values.`); featureProcessingMap.set(header, { strategy: 'skip' }); return; } const map = {}, invMap = {}; vals.forEach((v, i) => { map[v] = i; invMap[i] = v; }); labelEncoders[header] = { mapping: map, inverseMapping: invMap }; featureProcessingMap.set(header, { strategy: 'label', encoder: labelEncoders[header] }); finalFeatureHeaders.push(header); }
+                else if (details.type === 'numeric') { featureProcessingMap.set(header, { strategy: 'numeric' }); finalFeatureHeaders.push(header); }
+                else { console.warn(`Unexpected state ${header}, skipping.`); featureProcessingMap.set(header, { strategy: 'skip' }); }
             });
-
-            if (finalFeatureHeaders.length === 0) { updateStatus('Error: No features remaining after encoding.', 'error'); throw new Error('No features remaining after encoding.'); }
+            if (finalFeatureHeaders.length === 0) { updateStatus('Error: No features after encoding.', 'error'); throw new Error('No features after encoding.'); }
             const processedFeatureMatrix = []; const processedTargetVector = []; const targetDetails = featureDetails[targetVariable]; let targetIsCategorical = false; let targetEncoder = null;
-            if (targetDetails && targetDetails.target_type === 'categorical') {
-                targetIsCategorical = true; const targetHeader = targetVariable;
-                if (!labelEncoders[targetHeader]) { const values = Array.from(targetDetails.uniqueValues).filter(v => v != null && v !== '').sort(); const map = {}, invMap = {}; values.forEach((v, i) => { map[v] = i; invMap[i] = v; }); labelEncoders[targetHeader] = { mapping: map, inverseMapping: invMap }; }
-                targetEncoder = labelEncoders[targetHeader];
-            }
-
+            if (targetDetails && targetDetails.target_type === 'categorical') { targetIsCategorical = true; const tHeader = targetVariable; if (!labelEncoders[tHeader]) { const vals = Array.from(targetDetails.uniqueValues).filter(v=>v!=null&&v!=='').sort(); const map={},invMap={}; vals.forEach((v,i)=>{map[v]=i;invMap[i]=v;}); labelEncoders[tHeader]={mapping:map,inverseMapping:invMap};} targetEncoder=labelEncoders[tHeader];}
             currentData.forEach(row => {
                 let featureRow = [];
-                // Construct featureRow based on selectedFeatureNames and their processing strategy
-                selectedFeatureNames.forEach(selectedHeader => {
-                    const processingInfo = featureProcessingMap.get(selectedHeader);
-                    if (!processingInfo || processingInfo.strategy === 'skip') return;
-                    let value = row[selectedHeader];
-                    if (value == null || value === '') { value = (featureDetails[selectedHeader]?.type === 'numeric') ? 0 : 'Missing'; }
-                    switch (processingInfo.strategy) {
-                        case 'numeric': featureRow.push(isNaN(parseFloat(value)) ? 0 : parseFloat(value)); break;
-                        case 'label': featureRow.push(processingInfo.encoder.mapping[value] ?? -1); break;
-                        case 'onehot': processingInfo.encoder.categories.forEach(cat => featureRow.push(value === cat ? 1 : 0)); break;
+                selectedFeatureNames.forEach(selHeader => {
+                    const pInfo = featureProcessingMap.get(selHeader); if (!pInfo || pInfo.strategy === 'skip') return;
+                    let val = row[selHeader]; if (val == null || val === '') val = (featureDetails[selHeader]?.type === 'numeric') ? 0 : 'Missing';
+                    switch (pInfo.strategy) {
+                        case 'numeric': featureRow.push(isNaN(parseFloat(val)) ? 0 : parseFloat(val)); break;
+                        case 'label': featureRow.push(pInfo.encoder.mapping[val] ?? -1); break;
+                        case 'onehot': pInfo.encoder.categories.forEach(cat => featureRow.push(val === cat ? 1 : 0)); break;
                     }
                 });
-
-                let targetValue = row[targetVariable];
-                if (targetValue == null || targetValue === '') { console.warn(`Row skipped: missing target`); return; }
-                if (targetIsCategorical && targetEncoder) {
-                    const encoded = targetEncoder.mapping[targetValue];
-                    if (encoded !== undefined) { targetValue = encoded; } else { console.warn(`Row skipped: unseen target "${targetValue}"`); return; }
-                } else {
-                    targetValue = parseFloat(targetValue);
-                    if (isNaN(targetValue)) { console.warn(`Row skipped: non-numeric target "${row[targetVariable]}"`); return; }
-                }
-                // Only add row if featureRow is not empty (i.e., at least one feature was processed for it)
-                if(featureRow.length > 0) {
-                    processedFeatureMatrix.push(featureRow);
-                    processedTargetVector.push(targetValue);
-                } else if (finalFeatureHeaders.length > 0) { // If there should be features, but this row has none (e.g. all were skipped for this row)
-                    console.warn("Row resulted in empty feature vector, skipping:", row);
-                }
+                let targetVal = row[targetVariable]; if (targetVal == null || targetVal === '') { console.warn(`Row skipped: missing target`); return; }
+                if (targetIsCategorical && targetEncoder) { const enc = targetEncoder.mapping[targetVal]; if (enc !== undefined) targetVal = enc; else { console.warn(`Row skipped: unseen target "${targetVal}"`); return; } }
+                else { targetVal = parseFloat(targetVal); if (isNaN(targetVal)) { console.warn(`Row skipped: non-num target "${row[targetVariable]}"`); return; } }
+                if(featureRow.length > 0) { processedFeatureMatrix.push(featureRow); processedTargetVector.push(targetVal); }
+                else if (finalFeatureHeaders.length > 0) { console.warn("Empty feature vector for row:", row); }
             });
-
-            if (processedFeatureMatrix.length === 0) { updateStatus('Error: No valid rows remaining after processing selected features.', 'error'); throw new Error('No valid data rows remaining.'); }
+            if (processedFeatureMatrix.length === 0) { updateStatus('Error: No valid rows after processing features.', 'error'); throw new Error('No valid data rows.'); }
             updateStatus('Performing train/test split...', 'loading');
             const testRatio = parseFloat(testSplitRatioInput.value); if (isNaN(testRatio) || testRatio <= 0 || testRatio >= 1) { updateStatus('Error: Invalid split ratio.', 'error'); throw new Error('Invalid split ratio.'); }
             const combined = processedFeatureMatrix.map((f, i) => [...f, processedTargetVector[i]]); const shuffled = shuffleArray(combined); const splitIdx = Math.floor(shuffled.length * (1 - testRatio)); if (splitIdx === 0 || splitIdx >= shuffled.length) { updateStatus('Error: Train/test set size 0.', 'error'); throw new Error('Train/test set size 0.'); }
-            const trainData = shuffled.slice(0, splitIdx); const testData = shuffled.slice(splitIdx); trainFeatures = trainData.map(r => r.slice(0, -1)); trainTarget = trainData.map(r => r.slice(-1)[0]); testFeatures = testData.map(r => r.slice(0, -1)); testTarget = testData.map(r => r.slice(-1)[0]);
-            console.log(`Train size: ${trainFeatures.length}, Test size: ${testFeatures.length}`);
-            if(trainFeatures.length > 0) console.log("Number of features in training data:", trainFeatures[0].length);
-            updateStatus('Preprocessing complete.', 'success');
-            return true;
+            trainFeatures = shuffled.slice(0, splitIdx).map(r => r.slice(0, -1)); trainTarget = shuffled.slice(0, splitIdx).map(r => r.slice(-1)[0]);
+            testFeatures = shuffled.slice(splitIdx).map(r => r.slice(0, -1)); testTarget = shuffled.slice(splitIdx).map(r => r.slice(-1)[0]);
+            console.log(`Train: ${trainFeatures.length}, Test: ${testFeatures.length}`); if(trainFeatures.length>0) console.log("Features in train:", trainFeatures[0].length);
+            updateStatus('Preprocessing complete.', 'success'); return true;
         }
 
-        function shuffleArray(array) { let currentIndex = array.length, randomIndex; while (currentIndex !== 0) { randomIndex = Math.floor(Math.random() * currentIndex); currentIndex--; [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]]; } return array; }
+        function shuffleArray(array) { let ci=array.length,ri;while(ci!==0){ri=Math.floor(Math.random()*ci);ci--;[array[ci],array[ri]]=[array[ri],array[ci]];}return array;}
 
-        // --- Model Training ---
         async function handleTrainButtonClick() {
             trainButton.disabled = true; loadingSpinner.style.display = 'inline-block';
             updateStatus('Starting process...', 'loading');
             tab2ResultsContent.innerHTML = ''; if (resultsPlaceholder) resultsPlaceholder.classList.remove('hidden');
-
             const selectedModels = [];
             if (document.getElementById('modelRF').checked) selectedModels.push('RandomForest');
             if (document.getElementById('modelXGB').checked) selectedModels.push('XGBoost');
             if (document.getElementById('modelKNN').checked) selectedModels.push('KNN');
-
-            if (!targetVariable) { updateStatus('Error: Select target variable.', 'error'); resetTrainButton(); return; }
-            if (selectedModels.length === 0) { updateStatus('Error: Select at least one model.', 'error'); resetTrainButton(); return; }
-            if (!rawData || rawData.length === 0) { updateStatus('Error: Upload data first.', 'error'); resetTrainButton(); return; }
-
+            if (!targetVariable) { updateStatus('Error: Select target.', 'error'); resetTrainButton(); return; }
+            if (selectedModels.length === 0) { updateStatus('Error: Select models.', 'error'); resetTrainButton(); return; }
+            if (!rawData || rawData.length === 0) { updateStatus('Error: Upload data.', 'error'); resetTrainButton(); return; }
             try {
-                await new Promise(resolve => setTimeout(resolve, 10));
-                const preprocessSuccess = preprocessData();
-                if (!preprocessSuccess) { resetTrainButton(); return; }
-
-                updateStatus('Training models...', 'loading'); await new Promise(resolve => setTimeout(resolve, 10));
-                const models = {}; const targetEncoder = labelEncoders[targetVariable];
-                const targetClassesInverseMapping = targetEncoder ? targetEncoder.inverseMapping : null;
-
+                await new Promise(r => setTimeout(r, 10)); const prepSuccess = preprocessData(); if (!prepSuccess) { resetTrainButton(); return; }
+                updateStatus('Training models...', 'loading'); await new Promise(r => setTimeout(r, 10));
+                const models = {}; const tEncoder = labelEncoders[targetVariable]; const tInvMap = tEncoder ? tEncoder.inverseMapping : null;
                 for (const modelName of selectedModels) {
                     updateStatus(`Training ${modelName}...`, 'loading'); console.log(`Training ${modelName}...`);
-                    let predictions = null; let model = null;
+                    let preds = null; let model = null;
                     try {
-                        await new Promise(resolve => setTimeout(resolve, 10));
-                        if (modelName === 'RandomForest') { const opts = { seed: 42, maxFeatures: 0.8, replacement: true, nEstimators: 50 }; model = new ML.RandomForestClassifier(opts); model.train(trainFeatures, trainTarget); predictions = model.predict(testFeatures); }
-                        else if (modelName === 'KNN') { const k = parseInt(document.getElementById('knnKValue').value) || 5; model = new ML.KNN(trainFeatures, trainTarget, { k: k }); predictions = model.predict(testFeatures); }
-                        else if (modelName === 'XGBoost') { updateStatus('XGBoost (Simulated)...', 'loading'); console.warn("XGBoost simulated."); const uTargets = [...new Set(testTarget)]; predictions = testTarget.map(() => uTargets[Math.floor(Math.random() * uTargets.length)]); model = "Simulated XGBoost"; }
-                        if (predictions) { let decPreds = predictions; if (targetClassesInverseMapping) { decPreds = predictions.map(idx => targetClassesInverseMapping[idx] ?? `Unknown(${idx})`); } models[modelName] = { model: model, predictions: decPreds }; }
-                    } catch (trainError) { console.error(`Error training ${modelName}:`, trainError); updateStatus(`Error training ${modelName}: ${trainError.message}`, 'error'); models[modelName] = { model: null, predictions: null, error: trainError.message }; }
+                        await new Promise(r => setTimeout(r, 10));
+                        if (modelName === 'RandomForest') { const o = {seed:42,maxFeatures:0.8,replacement:true,nEstimators:50}; model=new ML.RandomForestClassifier(o); model.train(trainFeatures,trainTarget); preds=model.predict(testFeatures); }
+                        else if (modelName === 'KNN') { const k=parseInt(document.getElementById('knnKValue').value)||5; model=new ML.KNN(trainFeatures,trainTarget,{k:k}); preds=model.predict(testFeatures); }
+                        else if (modelName === 'XGBoost') { updateStatus('XGBoost (Simulated)...','loading'); console.warn("XGBoost simulated."); const uT=[...new Set(testTarget)]; preds=testTarget.map(()=>uT[Math.floor(Math.random()*uT.length)]); model="Simulated"; }
+                        if (preds) { let dPreds=preds; if(tInvMap){dPreds=preds.map(idx=>tInvMap[idx]??`Unk(${idx})`);} models[modelName]={model:model,predictions:dPreds};}
+                    } catch (trainErr) { console.error(`Err train ${modelName}:`,trainErr); updateStatus(`Err train ${modelName}: ${trainErr.message}`,'error'); models[modelName]={model:null,predictions:null,error:trainErr.message};}
                 }
-                updateStatus('Evaluating models...', 'loading'); await new Promise(resolve => setTimeout(resolve, 10));
-                let decodedTestTarget = testTarget; if (targetClassesInverseMapping) { decodedTestTarget = testTarget.map(idx => targetClassesInverseMapping[idx] ?? `Unknown(${idx})`); }
-                displayResults(models, decodedTestTarget);
-                updateStatus('Process complete! Results are ready.', 'success');
-                switchTab('tab2');
-            } catch (error) { console.error("Error during training:", error); const msg = error.message || 'An unexpected error occurred.'; updateStatus(`Error: ${msg}`, 'error');
+                updateStatus('Evaluating models...','loading'); await new Promise(r=>setTimeout(r,10));
+                let decTestTarget=testTarget; if(tInvMap){decTestTarget=testTarget.map(idx=>tInvMap[idx]??`Unk(${idx})`);}
+                displayResults(models,decTestTarget); updateStatus('Done! Results ready.','success'); switchTab('tab2');
+            } catch (err) { console.error("Training err:",err); const m=err.message||'Unexpected error.'; updateStatus(`Error: ${m}`,'error');
             } finally { resetTrainButton(); }
         }
+        function resetTrainButton() { trainButton.disabled=false; loadingSpinner.style.display='none';}
 
-        function resetTrainButton() { trainButton.disabled = false; loadingSpinner.style.display = 'none'; }
-
-        // --- Evaluation and Results Display (Targets Tab 2) ---
         function displayResults(trainedModels, actualTestTarget) {
             tab2ResultsContent.innerHTML = ''; if (resultsPlaceholder) resultsPlaceholder.classList.add('hidden');
             const successfulModels = Object.values(trainedModels).filter(r => !r.error && r.predictions);
-            if (successfulModels.length === 0) { tab2ResultsContent.innerHTML = '<p class="text-orange-600 font-medium">⚠️ No models successfully trained or generated predictions.</p>'; return; }
-
+            if (successfulModels.length === 0) { tab2ResultsContent.innerHTML = '<p class="text-orange-600 font-medium">⚠️ No models trained successfully.</p>'; return; }
             Object.entries(trainedModels).forEach(([modelName, result]) => {
-                const modelDiv = document.createElement('div');
-                modelDiv.className = 'border-t border-gray-200 pt-6 first:border-t-0 first:pt-0';
+                const modelDiv = document.createElement('div'); modelDiv.className = 'border-t border-gray-200 pt-6 first:border-t-0 first:pt-0';
                 let icon = '❓'; if (modelName === 'RandomForest') icon = '🌳'; if (modelName === 'XGBoost') icon = '⚡'; if (modelName === 'KNN') icon = '🧍';
                 modelDiv.innerHTML = `<h3 class="text-xl font-semibold text-indigo-700 mb-4 flex items-center"><span class="text-2xl mr-2">${icon}</span> ${modelName} Results</h3>`;
-                if (result.error) { modelDiv.innerHTML += `<p class="text-red-600 font-medium">❌ Training failed: ${result.error}</p>`; }
-                else if (!result.predictions) { modelDiv.innerHTML += `<p class="text-orange-600 font-medium">⚠️ Model skipped or no predictions.</p>`; }
+                if (result.error) { modelDiv.innerHTML += `<p class="text-red-600 font-medium">❌ Fail: ${result.error}</p>`; }
+                else if (!result.predictions) { modelDiv.innerHTML += `<p class="text-orange-600 font-medium">⚠️ Skip/No preds.</p>`; }
                 else {
-                    if (!result.predictions || !actualTestTarget || result.predictions.length !== actualTestTarget.length) { modelDiv.innerHTML += `<p class="text-red-600 font-medium">❌ Error: Prediction/Actual mismatch.</p>`; console.error(`Eval error ${modelName}: Pred len(${result.predictions?.length}) !== Actual len(${actualTestTarget?.length})`); }
+                    if (!result.predictions || !actualTestTarget || result.predictions.length !== actualTestTarget.length) { modelDiv.innerHTML += `<p class="text-red-600 font-medium">❌ Err: Pred/Actual mismatch.</p>`; console.error(`Eval err ${modelName}: Pred len(${result.predictions?.length}) != Actual len(${actualTestTarget?.length})`); }
                     else {
                         const confMatrix = calculateConfusionMatrix(actualTestTarget, result.predictions);
                         const matrixDivId = `confMatrix_${modelName}_${Date.now()}`; const matrixDiv = document.createElement('div'); matrixDiv.id = matrixDivId; matrixDiv.className = "mb-4"; modelDiv.appendChild(matrixDiv);
                         setTimeout(() => { plotConfusionMatrix(confMatrix, matrixDivId, modelName); }, 0);
                         const metrics = calculatePrecisionRecall(confMatrix); const metricsDiv = document.createElement('div'); metricsDiv.className = 'mt-4 text-sm overflow-x-auto';
-                        metricsDiv.innerHTML = `<h4 class="font-semibold text-gray-700 mb-2">Performance Metrics:</h4>`;
-                        let metricsTable = `<table class="metrics-table min-w-full divide-y divide-gray-300 border border-gray-300 text-xs rounded-lg overflow-hidden"><thead class="bg-gray-100"><tr><th class="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Class</th><th class="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Precision</th><th class="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">Recall</th><th class="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider">F1-Score</th></tr></thead><tbody class="bg-white divide-y divide-gray-200">`;
-                        metrics.forEach(m => { metricsTable += `<tr><td class="px-3 py-2 whitespace-nowrap font-medium text-gray-800">${m.class}</td><td class="px-3 py-2 whitespace-nowrap text-gray-700">${m.precision.toFixed(3)}</td><td class="px-3 py-2 whitespace-nowrap text-gray-700">${m.recall.toFixed(3)}</td><td class="px-3 py-2 whitespace-nowrap text-gray-700">${m.f1.toFixed(3)}</td></tr>`; });
+                        metricsDiv.innerHTML = `<h4 class="font-semibold text-gray-700 mb-2">Metrics:</h4>`;
+                        let metricsTable = `<table class="metrics-table min-w-full divide-y divide-gray-300 border border-gray-300 text-xs rounded-lg overflow-hidden"><thead class="bg-gray-100"><tr><th class="px-3 py-2 text-left font-semibold text-gray-600 up">Class</th><th class="px-3 py-2 text-left font-semibold text-gray-600 up">Precision</th><th class="px-3 py-2 text-left font-semibold text-gray-600 up">Recall</th><th class="px-3 py-2 text-left font-semibold text-gray-600 up">F1</th></tr></thead><tbody class="bg-white divide-y divide-gray-200">`;
+                        metrics.forEach(m => { metricsTable += `<tr><td class="px-3 py-2 whitespace-nowrap font-medium text-gray-800">${m.class}</td><td class="px-3 py-2 ws-nowrap text-gray-700">${m.precision.toFixed(3)}</td><td class="px-3 py-2 ws-nowrap text-gray-700">${m.recall.toFixed(3)}</td><td class="px-3 py-2 ws-nowrap text-gray-700">${m.f1.toFixed(3)}</td></tr>`; });
                         metricsTable += `</tbody></table>`; metricsDiv.innerHTML += metricsTable;
                         const accuracy = calculateAccuracy(confMatrix);
                         metricsDiv.innerHTML += `<div class="mt-3 bg-blue-50 border border-blue-200 rounded-md p-2 inline-block"><p class="font-semibold text-blue-800">🎯 Overall Accuracy: <span class="text-lg">${(accuracy * 100).toFixed(1)}%</span></p></div>`;
-                        modelDiv.appendChild(metricsDiv);
-                        modelDiv.innerHTML += `<p class="text-xs text-gray-400 mt-3 italic">(PR curve requires probability scores).</p>`;
+                        modelDiv.appendChild(metricsDiv); modelDiv.innerHTML += `<p class="text-xs text-gray-400 mt-3 italic">(PR curve needs probs).</p>`;
                     }
                 }
                 tab2ResultsContent.appendChild(modelDiv);
             });
         }
-
-        function calculateConfusionMatrix(yTrue, yPred) { if (!Array.isArray(yTrue) || !Array.isArray(yPred) || yTrue.length !== yPred.length) { console.error("Invalid input CM."); return { matrix: [[]], labels: [] }; } if (yTrue.length === 0) return { matrix: [[]], labels: [] }; const labelsSet = new Set([...yTrue, ...yPred]); const labels = Array.from(labelsSet).sort((a, b) => { if (typeof a === 'number' && typeof b === 'number') return a - b; return String(a).localeCompare(String(b)); }); const labelToIndex = new Map(labels.map((l, i) => [l, i])); const size = labels.length; const matrix = Array(size).fill(0).map(() => Array(size).fill(0)); for (let i = 0; i < yTrue.length; i++) { const trueIdx = labelToIndex.get(yTrue[i]); const predIdx = labelToIndex.get(yPred[i]); if (trueIdx !== undefined && predIdx !== undefined) { matrix[trueIdx][predIdx]++; } else { console.warn(`Undefined index CM: T='${yTrue[i]}', P='${yPred[i]}'`); } } return { matrix, labels }; }
-        function plotConfusionMatrix(confMatrixData, elementId, modelName) { const { matrix, labels } = confMatrixData; const plotElement = document.getElementById(elementId); if (!plotElement) { console.error(`Plotly target ${elementId} not found.`); return; } if (!matrix || !Array.isArray(matrix) || matrix.length === 0 || !Array.isArray(matrix[0]) || !labels || !Array.isArray(labels) || labels.length !== matrix.length) { plotElement.innerHTML = `<p class="text-red-500">Invalid CM data.</p>`; console.error(`Invalid matrix/label for ${modelName}:`, { matrix, labels }); return; } const stringLabels = labels.map(String); const totalSamplesPerClass = matrix.map(row => row.reduce((s, v) => s + v, 0)); const annotationFontColors = matrix.map(row => row.map(val => { let maxVal = 0; matrix.forEach(r => r.forEach(cell => { if (cell > maxVal) maxVal = cell; })); const normVal = maxVal > 0 ? val / maxVal : 0; return normVal > 0.5 ? 'black' : 'white'; })); const trace = { z: matrix, x: stringLabels, y: stringLabels, type: 'heatmap', colorscale: 'Viridis', reversescale: false, showscale: true, hoverinfo: 'skip', hovertemplate: '<b>True</b>: %{y}<br><b>Predicted</b>: %{x}<br><b>Count</b>: %{z}<extra></extra>', xgap: 2, ygap: 2, colorbar: { title: 'Count', titleside: 'right', tickfont: { size: 10, color: 'grey' } } }; const layout = { title: { text: `<b>Confusion Matrix: ${modelName}</b>`, font: { size: 16, family: 'Inter, sans-serif', color: '#333' }, x: 0.5, xanchor: 'center' }, xaxis: { title: 'Predicted Label', side: 'bottom', tickangle: labels.length > 5 ? -30 : 0, tickfont: { size: 11 } }, yaxis: { title: 'True Label', autorange: 'reversed', tickfont: { size: 11 } }, margin: { t: 50, b: 100, l: 100, r: 50 }, autosize: true, annotations: [] }; for (let i = 0; i < stringLabels.length; i++) { for (let j = 0; j < stringLabels.length; j++) { const textColor = annotationFontColors[i][j]; const count = matrix[i][j]; const percent = totalSamplesPerClass[i] > 0 ? (count / totalSamplesPerClass[i] * 100).toFixed(1) : "0.0"; const ann = { xref: 'x1', yref: 'y1', x: stringLabels[j], y: stringLabels[i], text: `${count}<br>(${percent}%)`, font: { family: 'Inter, sans-serif', size: 10, color: textColor }, showarrow: false }; layout.annotations.push(ann); } } Plotly.newPlot(elementId, [trace], layout, { responsive: true }).catch(err => { console.error(`Plotly error ${elementId}:`, err); if (plotElement) { plotElement.innerHTML = `<p class="text-red-500">Plot error.</p>`; } }); }
-        function calculatePrecisionRecall(confMatrixData) { const { matrix, labels } = confMatrixData; if (!matrix || !Array.isArray(matrix) || matrix.length === 0 || !labels || labels.length !== matrix.length) { console.error("Invalid input PR."); return []; } const numClasses = labels.length; const metrics = []; for (let i = 0; i < numClasses; i++) { let tp = matrix[i][i], fp = 0, fn = 0; for (let j = 0; j < numClasses; j++) { if (i !== j) { fp += matrix[j][i]; fn += matrix[i][j]; } } const precision = (tp + fp === 0) ? 0 : tp / (tp + fp); const recall = (tp + fn === 0) ? 0 : tp / (tp + fn); const f1 = (precision + recall === 0) ? 0 : 2 * (precision * recall) / (precision + recall); metrics.push({ class: labels[i], precision, recall, f1, tp, fp, fn }); } return metrics; }
-        function calculateAccuracy(confMatrixData) { const { matrix } = confMatrixData; if (!matrix || !Array.isArray(matrix) || matrix.length === 0) return 0; let totalCorrect = 0, totalSamples = 0; for (let i = 0; i < matrix.length; i++) { if (!Array.isArray(matrix[i]) || matrix[i].length !== matrix.length) { console.error("Invalid matrix structure Acc."); return 0; } for (let j = 0; j < matrix[i].length; j++) { if (i === j) totalCorrect += matrix[i][j]; totalSamples += matrix[i][j]; } } return totalSamples === 0 ? 0 : totalCorrect / totalSamples; }
-
-        // --- Initial Setup ---
+        function calculateConfusionMatrix(yT,yP){if(!Array.isArray(yT)||!Array.isArray(yP)||yT.length!==yP.length){console.error("Inv CM.");return{matrix:[[]],labels:[]};}if(yT.length===0)return{matrix:[[]],labels:[]};const lS=new Set([...yT,...yP]);const ls=Array.from(lS).sort((a,b)=>{if(typeof a==='number'&&typeof b==='number')return a-b;return String(a).localeCompare(String(b));});const l2i=new Map(ls.map((l,i)=>[l,i]));const sz=ls.length;const mat=Array(sz).fill(0).map(()=>Array(sz).fill(0));for(let i=0;i<yT.length;i++){const tI=l2i.get(yT[i]);const pI=l2i.get(yP[i]);if(tI!==undefined&&pI!==undefined){mat[tI][pI]++;}else{console.warn(`Undef idx CM: T='${yT[i]}',P='${yP[i]}'`);}}return{matrix:mat,labels:ls};}
+        function plotConfusionMatrix(confMatrixData,elementId,modelName){const{matrix,labels}=confMatrixData;const pE=document.getElementById(elementId);if(!pE){console.error(`Plotly target ${elementId} not found.`);return;}if(!matrix||!Array.isArray(matrix)||matrix.length===0||!Array.isArray(matrix[0])||!labels||!Array.isArray(labels)||labels.length!==matrix.length){pE.innerHTML=`<p class="text-red-500">Invalid CM data.</p>`;console.error(`Invalid matrix/label for ${modelName}:`,{matrix,labels});return;}const sLs=labels.map(String);const tSpC=matrix.map(r=>r.reduce((s,v)=>s+v,0));const aFCs=matrix.map(r=>r.map(v=>{let mV=0;matrix.forEach(rw=>rw.forEach(c=>{if(c>mV)mV=c;}));const nV=mV>0?v/mV:0;return nV>0.5?'black':'white';}));const tr={z:matrix,x:sLs,y:sLs,type:'heatmap',colorscale:'Viridis',reversescale:false,showscale:true,hoverinfo:'skip',hovertemplate:'<b>True</b>: %{y}<br><b>Predicted</b>: %{x}<br><b>Count</b>: %{z}<extra></extra>',xgap:2,ygap:2,colorbar:{title:'Count',titleside:'right',tickfont:{size:10,color:'grey'}}};const lo={title:{text:`<b>Confusion Matrix: ${modelName}</b>`,font:{size:16,family:'Inter, sans-serif',color:'#333'},x:0.5,xanchor:'center'},xaxis:{title:'Predicted Label',side:'bottom',tickangle:labels.length>5?-30:0,tickfont:{size:11}},yaxis:{title:'True Label',autorange:'reversed',tickfont:{size:11}},margin:{t:50,b:100,l:100,r:50},autosize:true,annotations:[]};for(let i=0;i<sLs.length;i++){for(let j=0;j<sLs.length;j++){const tC=aFCs[i][j];const cnt=matrix[i][j];const pct=tSpC[i]>0?(cnt/tSpC[i]*100).toFixed(1):"0.0";const an={xref:'x1',yref:'y1',x:sLs[j],y:sLs[i],text:`${cnt}<br>(${pct}%)`,font:{family:'Inter, sans-serif',size:10,color:tC},showarrow:false};lo.annotations.push(an);}}Plotly.newPlot(elementId,[tr],lo,{responsive:true}).catch(err=>{console.error(`Plotly error ${elementId}:`,err);if(pE){pE.innerHTML=`<p class="text-red-500">Plot error.</p>`;}});}
+        function calculatePrecisionRecall(cMD){const{matrix:m,labels:l}=cMD;if(!m||!Array.isArray(m)||m.length===0||!l||l.length!==m.length){console.error("Inv PR.");return[];}const nC=l.length;const mets=[];for(let i=0;i<nC;i++){let tp=m[i][i],fp=0,fn=0;for(let j=0;j<nC;j++){if(i!==j){fp+=m[j][i];fn+=m[i][j];}}const prec=(tp+fp===0)?0:tp/(tp+fp);const rec=(tp+fn===0)?0:tp/(tp+fn);const f1=(prec+rec===0)?0:2*(prec*rec)/(prec+rec);mets.push({class:l[i],precision:prec,recall:rec,f1:f1,tp:tp,fp:fp,fn:fn});}return mets;}
+        function calculateAccuracy(cMD){const{matrix:m}=cMD;if(!m||!Array.isArray(m)||m.length===0)return 0;let tC=0,tS=0;for(let i=0;i<m.length;i++){if(!Array.isArray(m[i])||m[i].length!==m.length){console.error("Inv Acc.");return 0;}for(let j=0;j<m[i].length;j++){if(i===j)tC+=m[i][j];tS+=m[i][j];}}return tS===0?0:tC/tS;}
         switchTab('tab1');
     </script>
 </body>
